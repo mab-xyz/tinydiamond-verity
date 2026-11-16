@@ -5,9 +5,13 @@
 [Verity](https://github.com/mab-xyz/verity), a Lean 4 language for smart contracts, and compiled by
 Verity to EVM bytecode.
 
-- Lean proves 15 properties of the contract (access control, immutable built-ins, routing
-  postconditions and frames, fallback reverts, constructor). They use no `sorry` and no axiom
-  beyond Lean's standard three.
+- Lean proves the routing table correct: access control, immutable built-ins, the exact storage
+  effect of every kind of cut (add, replace, remove with swap-and-pop, no-op) on the packed
+  selector list, its consistency with the mapping after any sequence of cuts, and the fallback's
+  reverts. The proofs use no `sorry`, no `native_decide`/`bv_decide`, and no axiom beyond Lean's
+  standard three.
+- What Verity's model cannot state (the fallback forwarding calldata, sender, value, result and
+  revert data byte for byte) is fuzzed on the compiled bytecode.
 - Foundry runs the upstream test suites unchanged against the compiled bytecode. It also runs
   differential fuzzing against the Solidity reference and a mutation campaign.
 
@@ -17,11 +21,13 @@ Verity to EVM bytecode.
 |---|---|
 | `TinyDiamond/Contract.lean` | The contract (`verity_contract TinyDiamond`) |
 | `TinyDiamondCompile.lean` | Compile driver: Yul + ABI + storage layout in `out/` |
-| `TinyDiamond/Proofs.lean` | The properties below |
-| `TinyDiamond/Routing.lean`, `Frame.lean`, `Packing.lean` | Frame lemmas, a small `Preserves`/`Establishes` calculus, bit lemmas of the packed routing word |
+| `TinyDiamond/Proofs.lean` | Access control, built-ins, routing postconditions and frames, fallback reverts |
+| `TinyDiamond/Table.lean` | The selector list: exact effect of each cut, consistency, sequences of cuts |
+| `TinyDiamond/Routing.lean`, `Frame.lean`, `Packing.lean`, `Lanes.lean` | Frame lemmas, a small `Preserves`/`Establishes` calculus, bit lemmas of the packed routing word and of the 32-bit selector lanes |
 | `test/ref/` | The Solidity reference (`mab-xyz/tiny-diamond@4255439`), used as fixtures and as the differential oracle |
 | `test/TinyDiamond.t.sol`, `DiamondLoupe.t.sol`, `DiamondCut.t.sol` | Upstream suites. Only the imports and the deployment (`VerityDeploy.tinyDiamond()`) are changed |
 | `test/Differential.t.sol` | Verity diamond vs Solidity diamond on random operation sequences |
+| `test/Dispatch.t.sol` | Fallback forwarding (exact calldata, sender, value, result, revert data), fuzzed |
 | `scripts/build-evm.sh`, `scripts/mutants.sh` | Build the bytecode; mutation testing |
 
 ## Same storage layout as the reference
@@ -72,27 +78,88 @@ of another selector, which swap-and-pop does, never touches a `facet` field: the
 `lake env lean scripts/PrintAxioms.lean` lists each theorem's axioms: `propext`,
 `Classical.choice` and `Quot.sound` only.
 
+### The 14 routing-table and dispatch properties
+
+Each property of the specification maps to a theorem, or to a fuzzed test when Verity's model cannot
+state it. "Consistent" is property 3 (`Table.Consistent`); `n` is the selector count; positions
+are slot + 1.
+
+Routing table:
+
+1. After any sequence of `sharpCut`s by the admin (not only 3) from an empty table, every selector
+   routes to the target of the last cut that touched it, or to nothing; `getTarget` and
+   `selectorToFacet` agree. `Table.cuts_from_empty`; from any consistent table:
+   `Table.cuts_sequence` (each cut provably succeeds: `Table.sharpCut_step`).
+2. Those cuts change no restriction and not the admin. `Table.cuts_sequence`.
+3. After those cuts the list is consistent with the mapping: every listed selector is routed and
+   its position matches its slot; no selector is listed twice (`Consistent.no_duplicates`); a
+   selector is routed exactly when it has a position, which points back to it.
+   `Table.cuts_sequence`, from per-cut preservation `consistent_add`/`_replace`/`_remove`.
+4. Cutting one selector leaves every other selector's facet and restriction unchanged.
+   `Proofs.sharpCut_frame`.
+5. None of the six built-ins can be routed or restricted, whatever the caller and target. The
+   built-ins are an independent list of selectors written from their signatures
+   (`Table.specBuiltinSelectors`). `Table.builtins_immutable`.
+6. A caller who is neither the admin nor the diamond changes nothing: both `sharpCut` and
+   `restrict` revert. `Proofs.*_reverts_of_not_authorized`, `Table.unauthorized_cut_noop`.
+
+Table consistency, for any number of selectors. Each theorem assumes consistency only on the
+entries the cut touches, and states every storage word that changes. Packed words shared with
+neighbouring lanes are covered by the per-lane statements.
+
+7. Add: the selector gets the facet, position `n+1` and slot `n`, and the length becomes `n+1`.
+   Every other routing word, every other slot and every other storage word is unchanged.
+   `Table.sharpCut_add`.
+8. Replace: the facet changes. Its position, the length, the whole list and every other word are
+   unchanged. `Table.sharpCut_replace`.
+9. Remove: the selector's routing word is cleared and the length becomes `n-1`.
+   - If it was not last, the last selector moves into its slot, keeps its facet and gets its
+     position.
+   - The vacated slot is cleared, and every other slot and word is unchanged.
+
+   `Table.sharpCut_remove`.
+10. No-op (target equals the current facet): nothing changes, not even an event.
+    `Table.sharpCut_noop`.
+
+Fallback dispatch:
+
+11. A routed call that the restriction allows reaches the facet with exactly the original
+    calldata, sender and value, and returns the facet's result. Tested in
+    `test/Dispatch.t.sol` `testFuzz_RoutedCallForwardsExactly`; see below for why there is no
+    theorem.
+12. When the facet reverts, the diamond reverts with exactly the same revert data, of any length.
+    Tested in `testFuzz_RevertDataForwardedExactly`.
+13. A routed call from anyone other than the restricted caller reverts with "caller is not
+    allowed". `Proofs.fallback_reverts_of_restricted`; fuzzed by
+    `testFuzz_RestrictedCallerOnly`.
+14. A call to any unrouted, non-built-in selector reverts with "selector not found".
+    `Proofs.fallback_reverts_of_unrouted`; fuzzed by `testFuzz_UnroutedSelectorNotFound`.
+
+The list lemmas use exact `Uint256` expressions of the contract's packing code:
+`Lanes.lane_setLane` proves that writing lane `r` sets lane `r` and keeps the other seven.
+
 ### What the proofs do not cover
 
-- **The forwarding itself.** In Verity, `delegatecall` returns whatever an oracle (an
-  `AdversaryModel`) answers, and `revertReturndata` does nothing in the proof model. So no
-  theorem states that the facet's returndata or revert payload is forwarded byte for byte. The
-  differential tests check this on the bytecode, including payloads whose length is not a
-  multiple of 32.
+- **The forwarding itself (properties 11, 12).** Verity's model cannot state it:
+  - `delegatecall` returns whatever an oracle (an `AdversaryModel`) answers;
+  - `revertReturndata` does nothing in the proof model;
+  - the success path returns through an ECM that the model treats as a static call.
+
+  `test/Dispatch.t.sol` and the differential tests check forwarding on the bytecode, including
+  payloads whose length is not a multiple of 32.
 - **The `DiamondCut` event payload.** The contract builds it with `mstore` and emits it with
   `rawLog`, and Verity's model records the log's offset and size but not its bytes. The
   differential tests compare the payloads byte for byte, constructor log included.
-- **The packed selector array's own consistency** (it lists exactly the routed selectors,
-  positions are right). This is not proved. It is tested by the upstream loupe suite (an
-  exhaustive check of about 7k states) and by `testFuzz_ManySelectors`.
+- **Selector counts near `2^95`.** The list theorems assume fewer than `2^95` selectors, far
+  below the `2^32` distinct selectors that can exist.
 - **Gas.**
 
 ## Testing the compiled bytecode
 
 ```bash
 scripts/build-evm.sh     # lake exe tinydiamond-compile out && solc --strict-assembly → out/TinyDiamond.bin
-forge test               # 78 tests: upstream (74) + differential (4)
-scripts/mutants.sh       # 21 Yul mutants, all must be KILLED
+forge test               # 82 tests: upstream (74) + differential (4) + dispatch (4)
+scripts/mutants.sh       # 23 Yul mutants, all must be KILLED
 ```
 
 - **Upstream suites** (74 tests). The harness was validated first with the *reference* bytecode
@@ -109,8 +176,13 @@ scripts/mutants.sh       # 21 Yul mutants, all must be KILLED
   `sharpCut` on the diamond itself.
 - **Mutation testing** (`scripts/mutants.sh`). Each mutant edits the Yul, for example to drop the
   admin check, the restriction check, the immutability check or the swap-and-pop, to lose the
-  revert payload, or to make the fallback non-payable. Each one must make a test fail. All 21
-  are killed.
+  revert payload, to truncate the forwarded calldata, to `call` the facet instead of
+  `delegatecall`ing it, or to make the fallback non-payable. Each one must make a test fail. All
+  23 are killed.
+- **Dispatch** (`test/Dispatch.t.sol`, properties 11–14, 1024 fuzz runs each). An echo facet
+  returns `abi.encode(msg.sender, msg.value, msg.data)` and a second facet reverts with arbitrary
+  bytes. The diamond must forward both exactly, under random selectors, calldata, values,
+  callers and restrictions.
 
 ### Known divergence from the Solidity reference
 

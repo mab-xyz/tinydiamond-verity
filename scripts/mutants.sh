@@ -39,6 +39,8 @@ mutant packing-shift-lost      's/or(cleared, shl(s, v))/or(cleared, v)/'
 mutant noop-cut-emits          's/if iszero(eq(old, target)) {/if 1 {/'
 mutant cut-action-wrong        's/internal_internal_emitCut(target, 1, key)/internal_internal_emitCut(target, 0, key)/'
 mutant restrict-not-stored     's/sstore(mappingSlot(4856191523366929523863144626492751294936335913391771255401221336565096728322, key), target)/sstore(mappingSlot(4856191523366929523863144626492751294936335913391771255401221336565096728322, key), 0)/'
+mutant calldata-truncated      's/calldatacopy(0, 0, calldatasize())/calldatacopy(0, 0, sub(calldatasize(), 1))/'
+mutant call-not-delegatecall   's/let ok := delegatecall(\([0-9]*\), target,/let ok := call(\1, target, 0,/'
 mutant constructor-no-admin    's/and(deployer, 0xffffffffffffffffffffffffffffffffffffffff)/0/'
 mutant constructor-no-event    's/log1(512, 512, /pop(/'
 cp out/TinyDiamond.yul.orig out/TinyDiamond.yul

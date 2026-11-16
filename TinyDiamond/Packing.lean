@@ -87,4 +87,66 @@ theorem dec_facet_enc_facet (cur v : Uint256) :
     simp [h, this]
   · simp [h]
 
+/-- Writing the facet (bits 0..159) keeps the position (bits 160..255). -/
+theorem dec_position_enc_facet (cur v : Uint256) :
+    dec (enc cur v 0 160) 160 96 = dec cur 160 96 := by
+  apply Uint256.ext
+  simp only [dec, enc, mask, Uint256.and, Uint256.or, Uint256.not, Uint256.shl, Uint256.shr,
+    Uint256.val_ofNat, Nat.land_eq, Nat.lor_eq, modulus_eq]
+  have hnot : (MAX_UINT256 - (((2 ^ 160 - 1) % 2 ^ 256) <<< (0 % 2 ^ 256)) % 2 ^ 256) % 2 ^ 256
+      = (2 ^ 96 - 1) <<< 160 := by decide
+  rw [hnot]
+  have h160 : (160 : Nat) % 2 ^ 256 = 160 := by decide
+  have h0 : (0 : Nat) % 2 ^ 256 = 0 := by decide
+  have hm96 : (2 ^ 96 - 1 : Nat) % 2 ^ 256 = 2 ^ 96 - 1 := by decide
+  have hm160 : (2 ^ 160 - 1 : Nat) % 2 ^ 256 = 2 ^ 160 - 1 := by decide
+  simp only [h160, h0, hm96, hm160, Nat.shiftLeft_zero]
+  apply Nat.eq_of_testBit_eq
+  intro i
+  simp only [Nat.testBit_mod_two_pow, Nat.testBit_and, Nat.testBit_or, Nat.testBit_shiftLeft,
+    Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  by_cases h : i < 96
+  · have : 160 + i < 256 := by omega
+    simp [h, this]
+  · simp [h]
+
+/-- Writing the position (bits 160..255) and reading it back gives the low 96 bits written. -/
+theorem dec_position_enc_position (cur v : Uint256) :
+    (dec (enc cur v 160 96) 160 96).val = v.val % 2 ^ 96 := by
+  simp only [dec, enc, mask, Uint256.and, Uint256.or, Uint256.not, Uint256.shl, Uint256.shr,
+    Uint256.val_ofNat, Nat.land_eq, Nat.lor_eq, modulus_eq]
+  have hnot : (MAX_UINT256 - (((2 ^ 96 - 1) % 2 ^ 256) <<< (160 % 2 ^ 256)) % 2 ^ 256) % 2 ^ 256
+      = 2 ^ 160 - 1 := by decide
+  rw [hnot]
+  have h160 : (160 : Nat) % 2 ^ 256 = 160 := by decide
+  have hm96 : (2 ^ 96 - 1 : Nat) % 2 ^ 256 = 2 ^ 96 - 1 := by decide
+  have hm160 : (2 ^ 160 - 1 : Nat) % 2 ^ 256 = 2 ^ 160 - 1 := by decide
+  simp only [h160, hm96]
+  apply Nat.eq_of_testBit_eq
+  intro i
+  simp only [Nat.testBit_mod_two_pow, Nat.testBit_and, Nat.testBit_or, Nat.testBit_shiftLeft,
+    Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one]
+  by_cases h : i < 96
+  · have h1 : 160 + i < 256 := by omega
+    have h2 : i < 256 := by omega
+    simp [h, h1, h2]
+  · simp [h]
+
+/-- Clearing the facet then the position clears the whole word. -/
+theorem enc_clear (cur : Uint256) : enc (enc cur 0 0 160) 0 160 96 = 0 := by
+  apply Uint256.ext
+  simp only [enc, mask, Uint256.and, Uint256.or, Uint256.not, Uint256.shl,
+    Uint256.val_ofNat, Nat.land_eq, Nat.lor_eq, modulus_eq]
+  have hz : (0 : Uint256).val = 0 := rfl
+  have hnot1 : (MAX_UINT256 - (((2 ^ 160 - 1) % 2 ^ 256) <<< (0 % 2 ^ 256)) % 2 ^ 256) % 2 ^ 256
+      = (2 ^ 96 - 1) <<< 160 := by decide
+  have hnot2 : (MAX_UINT256 - (((2 ^ 96 - 1) % 2 ^ 256) <<< (160 % 2 ^ 256)) % 2 ^ 256) % 2 ^ 256
+      = 2 ^ 160 - 1 := by decide
+  rw [hnot1, hnot2, hz]
+  apply Nat.eq_of_testBit_eq
+  intro i
+  simp only [Nat.testBit_mod_two_pow, Nat.testBit_and, Nat.testBit_shiftLeft,
+    Nat.testBit_two_pow_sub_one, Nat.zero_and, Nat.zero_shiftLeft, Nat.zero_mod, Nat.or_zero]
+  by_cases h : i < 160 <;> simp [h]
+
 end Diamond.Packing

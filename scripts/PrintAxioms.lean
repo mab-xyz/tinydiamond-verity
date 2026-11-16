@@ -15,3 +15,13 @@ import TinyDiamond
 #print axioms Diamond.Proofs.selectorToFacet_eq
 #print axioms Diamond.Proofs.selectorRestriction_eq
 #print axioms Diamond.Proofs.admin_eq
+#print axioms Diamond.Table.sharpCut_add
+#print axioms Diamond.Table.sharpCut_replace
+#print axioms Diamond.Table.sharpCut_remove
+#print axioms Diamond.Table.sharpCut_noop
+#print axioms Diamond.Table.sharpCut_step
+#print axioms Diamond.Table.cuts_sequence
+#print axioms Diamond.Table.cuts_from_empty
+#print axioms Diamond.Table.builtins_immutable
+#print axioms Diamond.Table.unauthorized_cut_noop
+#print axioms Diamond.Table.Consistent.no_duplicates
