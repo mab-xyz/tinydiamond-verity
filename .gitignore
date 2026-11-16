@@ -1,0 +1,7 @@
+.lake
+/out/
+/cache/
+plan-*.md
+__pycache__/
+/scratch/
+/forge-out/

@@ -1,0 +1,1 @@
+import TinyDiamond.Contract

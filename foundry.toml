@@ -1,0 +1,13 @@
+[profile.default]
+src = "test/ref"
+out = "forge-out"
+test = "test"
+libs = ["lib"]
+evm_version = "cancun"
+remappings = ["forge-std/=lib/forge-std/src/"]
+fs_permissions = [{ access = "read", path = "./out" }]
+# the exhaustive loupe test checks ~7k states in one test
+gas_limit = "18446744073709551615"
+
+[profile.default.fuzz]
+runs = 1024
