@@ -174,7 +174,7 @@ contract DifferentialTest is Test {
             // a routed call: arguments for the probe functions, value for the payable ones
             bytes memory args = abi.encode(seed >> 64, uint256(uint160(target)));
             if (sel == ProbeFacet.selfCut.selector || sel == ITinyDiamond.sharpCut.selector) {
-                // well-formed (bytes4, address) arguments: see test_DirtyArgumentsAreMasked
+                // well-formed (bytes4, address) arguments; dirty ones: test_DirtyArgumentsRevertLikeSolc
                 args = abi.encode(sels[(seed >> 48) % sels.length], target);
             }
             _both(caller, (seed >> 56) % 3, bytes.concat(sel, args));
@@ -230,24 +230,27 @@ contract DifferentialTest is Test {
         assertEq(ver.getTarget(fresh), probe);
     }
 
-    /// Known divergence: Verity's ABI decoder masks a dirty `bytes4`/`address` argument to its
-    /// width (Verity `ParamLoading.genScalarLoad`), where solc's decoder reverts with empty data.
-    function test_DirtyArgumentsAreMasked() public {
+    /// A dirty `address` or `bytes4` argument (high or low bits set beyond its width) reverts with
+    /// empty data in both, as solc's ABI decoder does (Verity validates scalar head words since
+    /// lfglabs-dev/verity#2798; before, it masked them and routed the call).
+    function test_DirtyArgumentsRevertLikeSolc() public {
         bytes memory dirtyTarget = abi.encodePacked(
             ITinyDiamond.sharpCut.selector, bytes32(bytes4(0x11223344)), bytes32(type(uint256).max));
-        (bool okR, bytes memory outR) = address(ref).call(dirtyTarget);
-        assertFalse(okR);
-        assertEq(outR.length, 0);
-        (bool okV,) = address(ver).call(dirtyTarget);
-        assertTrue(okV);
-        assertEq(ver.getTarget(0x11223344), address(type(uint160).max));
+        _bothRevertEmpty(dirtyTarget);
+        assertEq(ver.getTarget(0x11223344), address(0));
 
         bytes memory dirtySelector = abi.encodePacked(
             ITinyDiamond.sharpCut.selector, bytes32(uint256(0x1122334455) << 216), bytes32(uint256(1)));
-        (okR,) = address(ref).call(dirtySelector);
+        _bothRevertEmpty(dirtySelector);
+        assertEq(ver.getTarget(0x11223344), address(0));
+    }
+
+    function _bothRevertEmpty(bytes memory data) internal {
+        (bool okR, bytes memory outR) = address(ref).call(data);
+        (bool okV, bytes memory outV) = address(ver).call(data);
         assertFalse(okR);
-        (okV,) = address(ver).call(dirtySelector);
-        assertTrue(okV);
-        assertEq(ver.getTarget(0x11223344), address(1));
+        assertFalse(okV);
+        assertEq(outR.length, 0);
+        assertEq(outV.length, 0);
     }
 }

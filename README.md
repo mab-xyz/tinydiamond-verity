@@ -184,13 +184,12 @@ scripts/mutants.sh       # 23 Yul mutants, all must be KILLED
   bytes. The diamond must forward both exactly, under random selectors, calldata, values,
   callers and restrictions.
 
-### Known divergence from the Solidity reference
+### Dirty ABI arguments
 
-Verity's ABI decoder *masks* a dirty `bytes4` or `address` argument (high bits set) to its width,
-where solc's decoder *reverts*. So `sharpCut(0x11223344…dirty, 0xff…ff)` routes to
-`address(type(uint160).max)` instead of reverting. `test_DirtyArgumentsAreMasked` pins this
-behaviour. It is Verity-wide (`Compiler/CompilationModel/ParamLoading.lean`), not specific to
-this contract.
+A dirty `bytes4` or `address` argument (bits set beyond its width) reverts with empty data, as
+solc's ABI decoder does: `test_DirtyArgumentsRevertLikeSolc` checks both against each other. Verity
+validates scalar arguments since lfglabs-dev/verity#2798; before, it masked them, so
+`sharpCut(0x11223344…dirty, 0xff…ff)` routed to `address(type(uint160).max)`.
 
 ## Verity gaps worked around
 
@@ -227,7 +226,7 @@ scripts/build-evm.sh && forge test
 scripts/mutants.sh
 ```
 
-Verity is pinned at `mab-xyz/verity@262375bd9`. Building it from scratch takes a long time; a
+Verity is pinned at `mab-xyz/verity@96f7c02f1` (upstream main plus the fork features, branch `int/upstream-2026-11-19`). Building it from scratch takes a long time; a
 `.lake` with the Verity packages already built can be reused.
 
 ## License
