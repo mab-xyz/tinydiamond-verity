@@ -295,9 +295,35 @@ def SameStorage (a b : ContractState) : Prop :=
   a.storageWords = b.storageWords ∧ a.storageArray = b.storageArray ∧
     a.sender = b.sender ∧ a.thisAddress = b.thisAddress
 
+/-- The `DiamondCut` event `emitCut facet action key` logs: one `FacetCut` with one selector,
+`_init = 0`, `_calldata = ""`. Each argument's ABI encoding, in order: the `FacetCut[]` tail (one
+cut at offset `0x20`; facet, action, selectors offset `0x60`; one selector), `_init`, and the empty
+`bytes` (length 0). Leaves are cleaned as solc does: the facet to 160 bits, the action to 8 bits,
+the selector to its high 4 bytes. -/
+def cutEvent (facet action key : Uint256) : Event where
+  name := "DiamondCut"
+  args := [1, 32, facet.val % 2 ^ 160, action.val % 2 ^ 8, 96, 1,
+    key.val / 2 ^ 224 % 2 ^ 32 * 2 ^ 224, 0, 0].map Verity.Core.Uint256.ofNat
+  indexedArgs := []
+
+/-- `emitCut` appends `cutEvent` to the log and changes nothing else. -/
+theorem emitCut_eq (f a k : Uint256) (s : ContractState) :
+    TinyDiamond.emitCut f a k s =
+      ContractResult.success () { s with events := s.events ++ [cutEvent f a k] } := by
+  simp [TinyDiamond.emitCut, cutEvent, Contracts.emitEncoded,
+    Compiler.CompilationModel.abiLitWords, Compiler.CompilationModel.abiLitEncode,
+    Compiler.CompilationModel.abiLitEncodeItems, Compiler.CompilationModel.abiLitLayoutSeq,
+    Compiler.CompilationModel.abiLitBaseType, Compiler.CompilationModel.abiLitLeafType?,
+    Compiler.CompilationModel.abiLitNormalizeWord, Compiler.CompilationModel.isDynamicParamType,
+    Compiler.CompilationModel.isDynamicParamTypeList,
+    TinyDiamond.__eventParamTypes_DiamondCut, TinyDiamond.NO_INIT,
+    Pure.pure, Except.pure, Bind.bind, Except.bind]
+  rfl
+
 theorem emitCut_ok (f a k : Uint256) (s : ContractState) :
-    ∃ s', TinyDiamond.emitCut f a k s = ContractResult.success () s' ∧ SameStorage s' s :=
-  ⟨_, rfl, rfl, rfl, rfl, rfl⟩
+    ∃ s', TinyDiamond.emitCut f a k s = ContractResult.success () s' ∧ SameStorage s' s ∧
+      s'.events = s.events ++ [cutEvent f a k] :=
+  ⟨_, emitCut_eq f a k s, ⟨rfl, rfl, rfl, rfl⟩, rfl⟩
 
 theorem isBuiltin_false (k : Uint256) (s : ContractState) (h : k ∉ builtinKeys) :
     TinyDiamond.isBuiltin k s = ContractResult.success false s := by
@@ -328,7 +354,8 @@ theorem cut_add (s : ContractState) (key : Uint256) (t : Address) (hb : key ∉ 
     ∃ s', TinyDiamond.cut key t s = ContractResult.success () s' ∧
       SameStorage s' (withWords
         (setPos (setFacetSt s key t) key (Verity.Core.Uint256.ofNat ((words s).length + 1)))
-        (setLaneAt (words s ++ [0]) (words s).length (EVM.Uint256.shr 224 key))) := by
+        (setLaneAt (words s ++ [0]) (words s).length (EVM.Uint256.shr 224 key))) ∧
+      s'.events = s.events ++ [cutEvent (addressToWord t) 0 key] := by
   unfold TinyDiamond.cut
   rw [cut_prefix s key hb, h0]
   have c1 : (zeroAddress != t) = true := by simpa using Ne.symm ht
@@ -360,7 +387,8 @@ def posOf (s : ContractState) (key : Uint256) : Uint256 := dec (entry s key) 160
 theorem cut_replace (s : ContractState) (key : Uint256) (t : Address) (hb : key ∉ builtinKeys)
     (h0 : targetOf s key ≠ zeroAddress) (ht : t ≠ zeroAddress) (hne : targetOf s key ≠ t) :
     ∃ s', TinyDiamond.cut key t s = ContractResult.success () s' ∧
-      SameStorage s' (setFacetSt s key t) := by
+      SameStorage s' (setFacetSt s key t) ∧
+      s'.events = s.events ++ [cutEvent (addressToWord t) 1 key] := by
   unfold TinyDiamond.cut
   rw [cut_prefix s key hb]
   rw [if_pos (by simpa using hne), if_neg (by simpa using h0), if_neg (by simpa using ht)]
@@ -372,7 +400,8 @@ theorem cut_remove (s : ContractState) (key : Uint256) (hb : key ∉ builtinKeys
     (hp : 1 ≤ (posOf s key).val) (hpn : (posOf s key).val ≤ (words s).length)
     (hn : (words s).length < 2 ^ 255) :
     ∃ s', TinyDiamond.cut key zeroAddress s = ContractResult.success () s' ∧
-      SameStorage s' (setPos (setFacetSt (removeState s (posOf s key)) key zeroAddress) key 0) := by
+      SameStorage s' (setPos (setFacetSt (removeState s (posOf s key)) key zeroAddress) key 0) ∧
+      s'.events = s.events ++ [cutEvent 0 2 key] := by
   unfold TinyDiamond.cut
   rw [cut_prefix s key hb]
   rw [if_pos (by simpa using h0), if_neg (by simpa using h0), if_pos (by simp)]
@@ -380,7 +409,11 @@ theorem cut_remove (s : ContractState) (key : Uint256) (hb : key ∉ builtinKeys
   rw [show dec (s.readMapChain FACETS [key.val] 0) 160 96 = posOf s key from rfl]
   rw [bindM_success (removeSelector_ok s _ hp hpn hn), bindM_success (setFacet_eq _ _ _),
     bindM_success (setPosition_eq _ _ _)]
-  exact emitCut_ok _ _ _ _
+  obtain ⟨s', h1, h2, h3⟩ := emitCut_ok 0 2 key
+    (setPos (setFacetSt (removeState s (posOf s key)) key zeroAddress) key TinyDiamond.NO_POSITION)
+  refine ⟨s', h1, h2, h3.trans ?_⟩
+  congr 1
+  unfold removeState; dsimp only; split <;> rfl
 
 /-- Cutting a selector to its current facet changes nothing (and emits nothing). -/
 theorem cut_noop (s : ContractState) (key : Uint256) (t : Address) (hb : key ∉ builtinKeys)
@@ -498,7 +531,7 @@ theorem sharpCut_add (s : ContractState) (sel : Contracts.Bytes4) (t : Address)
       OnlyEntries [toUint256 sel] s s' ∧ OtherArrays s s' := by
   set key := toUint256 sel
   set n := (words s).length
-  obtain ⟨s', hcut, hsame⟩ := cut_add s key t hb h0 ht (by omega)
+  obtain ⟨s', hcut, hsame, _⟩ := cut_add s key t hb h0 ht (by omega)
   refine ⟨s', sharpCut_of_cut s s' sel t ha hcut, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [targetOf_eq_entry, entry_of_same hsame, entry_withWords, entry_setPos, if_pos rfl,
       dec_facet_enc_position, entry_setFacetSt, if_pos rfl, target_after_facet]
@@ -534,7 +567,7 @@ theorem sharpCut_replace (s : ContractState) (sel : Contracts.Bytes4) (t : Addre
       (∀ k, k ≠ toUint256 sel → entry s' k = entry s k) ∧
       OnlyEntries [toUint256 sel] s s' ∧ OtherArrays s s' := by
   set key := toUint256 sel
-  obtain ⟨s', hcut, hsame⟩ := cut_replace s key t hb h0 ht hne
+  obtain ⟨s', hcut, hsame, _⟩ := cut_replace s key t hb h0 ht hne
   refine ⟨s', sharpCut_of_cut s s' sel t ha hcut, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [targetOf_eq_entry, entry_of_same hsame, entry_setFacetSt, if_pos rfl, target_after_facet]
   · unfold posOf
@@ -628,7 +661,7 @@ theorem sharpCut_remove (s : ContractState) (sel : Contracts.Bytes4)
   have hn1 : n < 2 ^ 95 := hn
   have hpp : (posOf s key).val = p := rfl
   have hnn : (words s).length = n := rfl
-  obtain ⟨s', hcut, hsame⟩ := cut_remove s key hb h0 hp hpn (by omega)
+  obtain ⟨s', hcut, hsame, _⟩ := cut_remove s key hb h0 hp hpn (by omega)
   have hlk : p ≠ n → lk ≠ key := by
     intro hpn' he
     apply hpn'
@@ -683,6 +716,39 @@ theorem sharpCut_remove (s : ContractState) (sel : Contracts.Bytes4)
     rw [hsame.2.1]
     unfold removeState; dsimp only
     split <;> simp [withWords, setPos, setFacetSt, hsl]
+
+/-! ## The `DiamondCut` event of each cut -/
+
+/-- An add (property 7) logs `DiamondCut([(t, Add, [sel])], 0, "")`. -/
+theorem sharpCut_add_logs (s : ContractState) (sel : Contracts.Bytes4) (t : Address)
+    (ha : Authorized s) (hb : toUint256 sel ∉ builtinKeys)
+    (h0 : targetOf s (toUint256 sel) = zeroAddress) (ht : t ≠ zeroAddress)
+    (hn : (words s).length + 1 < 2 ^ 96) :
+    ∃ s', (TinyDiamond.sharpCut sel t).run s = ContractResult.success () s' ∧
+      s'.events = s.events ++ [cutEvent (addressToWord t) 0 (toUint256 sel)] := by
+  obtain ⟨s', hcut, _, hev⟩ := cut_add s (toUint256 sel) t hb h0 ht (by omega)
+  exact ⟨s', sharpCut_of_cut s s' sel t ha hcut, hev⟩
+
+/-- A replace (property 8) logs `DiamondCut([(t, Replace, [sel])], 0, "")`. -/
+theorem sharpCut_replace_logs (s : ContractState) (sel : Contracts.Bytes4) (t : Address)
+    (ha : Authorized s) (hb : toUint256 sel ∉ builtinKeys)
+    (h0 : targetOf s (toUint256 sel) ≠ zeroAddress) (ht : t ≠ zeroAddress)
+    (hne : targetOf s (toUint256 sel) ≠ t) :
+    ∃ s', (TinyDiamond.sharpCut sel t).run s = ContractResult.success () s' ∧
+      s'.events = s.events ++ [cutEvent (addressToWord t) 1 (toUint256 sel)] := by
+  obtain ⟨s', hcut, _, hev⟩ := cut_replace s (toUint256 sel) t hb h0 ht hne
+  exact ⟨s', sharpCut_of_cut s s' sel t ha hcut, hev⟩
+
+/-- A remove (property 9) logs `DiamondCut([(0, Remove, [sel])], 0, "")`. -/
+theorem sharpCut_remove_logs (s : ContractState) (sel : Contracts.Bytes4)
+    (ha : Authorized s) (hb : toUint256 sel ∉ builtinKeys)
+    (h0 : targetOf s (toUint256 sel) ≠ zeroAddress)
+    (hp : 1 ≤ (posOf s (toUint256 sel)).val) (hpn : (posOf s (toUint256 sel)).val ≤ (words s).length)
+    (hn : (words s).length < 2 ^ 255) :
+    ∃ s', (TinyDiamond.sharpCut sel zeroAddress).run s = ContractResult.success () s' ∧
+      s'.events = s.events ++ [cutEvent 0 2 (toUint256 sel)] := by
+  obtain ⟨s', hcut, _, hev⟩ := cut_remove s (toUint256 sel) hb h0 hp hpn hn
+  exact ⟨s', sharpCut_of_cut s s' sel zeroAddress ha hcut, hev⟩
 
 /-! ## 3. Consistency of the list with the mapping -/
 
@@ -899,7 +965,7 @@ theorem sharpCut_step (s : ContractState) (sel : Contracts.Bytes4) (t : Address)
   by_cases h0 : targetOf s key = zeroAddress
   · have ht : t ≠ zeroAddress := fun h => hnoop (h0.trans h.symm)
     obtain ⟨s', hrun, a1, a2, a3, a4, a5, a6, _, _⟩ := sharpCut_add s sel t ha hb h0 ht (by omega)
-    obtain ⟨s2, hcut, hsame⟩ := cut_add s key t hb h0 ht (by omega)
+    obtain ⟨s2, hcut, hsame, _⟩ := cut_add s key t hb h0 ht (by omega)
     exact ⟨s', hrun, consistent_add hc hk h0 ht a1 a2 a3 a4 a5 a6, by omega,
       sharpCut_same_of_cut ha hcut hsame ⟨rfl, rfl⟩ hrun⟩
   by_cases ht : t = zeroAddress
@@ -912,13 +978,13 @@ theorem sharpCut_step (s : ContractState) (sel : Contracts.Bytes4) (t : Address)
       rw [hlast]; omega
     obtain ⟨s', hrun, r1, r2, r3, _, r5, r6, _, _⟩ :=
       sharpCut_remove s sel ha hb h0 (Nat.one_le_iff_ne_zero.mpr hp0) hpn hlast' (by omega)
-    obtain ⟨s2, hcut, hsame⟩ := cut_remove s key hb h0 (Nat.one_le_iff_ne_zero.mpr hp0) hpn
+    obtain ⟨s2, hcut, hsame, _⟩ := cut_remove s key hb h0 (Nat.one_le_iff_ne_zero.mpr hp0) hpn
       (by omega)
     refine ⟨s', hrun, consistent_remove hc hk h0 r1 r2 r3 r5 r6, by omega, ?_⟩
     apply sharpCut_same_of_cut ha hcut hsame _ hrun
     unfold removeState; dsimp only; split <;> exact ⟨rfl, rfl⟩
   · obtain ⟨s', hrun, a1, a2, a3, a4, _, _⟩ := sharpCut_replace s sel t ha hb h0 ht hnoop
-    obtain ⟨s2, hcut, hsame⟩ := cut_replace s key t hb h0 ht hnoop
+    obtain ⟨s2, hcut, hsame, _⟩ := cut_replace s key t hb h0 ht hnoop
     exact ⟨s', hrun, consistent_replace hc h0 ht a1 a2 a3 a4, by rw [a3]; omega,
       sharpCut_same_of_cut ha hcut hsame ⟨rfl, rfl⟩ hrun⟩
 

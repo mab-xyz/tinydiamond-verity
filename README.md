@@ -121,6 +121,11 @@ neighbouring lanes are covered by the per-lane statements.
 10. No-op (target equals the current facet): nothing changes, not even an event.
     `Table.sharpCut_noop`.
 
+Each of 7, 8 and 9 logs exactly one `DiamondCut([(facet, action, [sel])], 0, "")`, with
+action Add (0) and facet `t`, Replace (1) and facet `t`, or Remove (2) and facet 0:
+`Table.sharpCut_add_logs`, `sharpCut_replace_logs`, `sharpCut_remove_logs`. The logged words
+are `Table.cutEvent`: the `FacetCut[]` encoding, `_init` and the empty `bytes`.
+
 Fallback dispatch:
 
 11. A routed call that the restriction allows reaches the facet with exactly the original
@@ -147,9 +152,11 @@ The list lemmas use exact `Uint256` expressions of the contract's packing code:
 
   `test/Dispatch.t.sol` and the differential tests check forwarding on the bytecode, including
   payloads whose length is not a multiple of 32.
-- **The `DiamondCut` event payload.** The contract emits it with `emit`, and Verity's model
-  records its ABI-encoded words, but no theorem here states them. The differential tests compare
-  the payloads byte for byte, constructor log included.
+- **The `DiamondCut` head words and the constructor's event.** Verity's model records each
+  argument's encoded words, not the three head words before them (the offsets `0x60` and
+  `0x140`, and `_init`'s position), which are constants of the encoder. No theorem states the
+  constructor's event. The differential tests compare every log byte for byte, constructor log
+  included.
 - **Selector counts near `2^95`.** The list theorems assume fewer than `2^95` selectors, far
   below the `2^32` distinct selectors that can exist.
 - **Gas.**

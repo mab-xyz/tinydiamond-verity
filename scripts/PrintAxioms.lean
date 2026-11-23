@@ -25,3 +25,6 @@ import TinyDiamond
 #print axioms Diamond.Table.builtins_immutable
 #print axioms Diamond.Table.unauthorized_cut_noop
 #print axioms Diamond.Table.Consistent.no_duplicates
+#print axioms Diamond.Table.sharpCut_add_logs
+#print axioms Diamond.Table.sharpCut_replace_logs
+#print axioms Diamond.Table.sharpCut_remove_logs
