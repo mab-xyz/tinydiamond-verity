@@ -195,8 +195,6 @@ validates scalar arguments since lfglabs-dev/verity#2798; before, it masked them
 
 These workarounds are kept outside Verity so that this repository builds against upstream Verity:
 
-- `fallback` cannot be declared `payable` and cannot carry a reentrancy disposition.
-  `TinyDiamondCompile.lean` patches the compiled spec: `isPayable`, `reentrancyTrusted`.
 - No statement returns the raw returndata. The contract uses the ECM
   `SolidityReturnMemory` (`return(0, returndatasize())`).
 - No packed `bytes4[]` and no `bytes4` mapping key. The contract declares a `uint256[]` with

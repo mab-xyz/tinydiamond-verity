@@ -89,7 +89,10 @@ verity_contract TinyDiamond where
   receive := do
     pure ()
 
-  fallback local_obligations [selector_routing_proxy := assumed "msg.sig read with calldataload; the facet runs with delegatecall on this storage and its returndata or revert payload is forwarded verbatim, as in the Solidity reference's assembly."] := do
+  -- Solidity's fallback is `payable`. Its `delegatecall` runs the facet *as* the diamond, so
+  -- reentrancy is not a cross-contract question here: the facet is trusted with the whole
+  -- storage (README, Security).
+  fallback payable reentrancy_trusted local_obligations [selector_routing_proxy := assumed "msg.sig read with calldataload; the facet runs with delegatecall on this storage and its returndata or revert payload is forwarded verbatim, as in the Solidity reference's assembly."] := do
     let key := bitAnd (calldataload 0) SELECTOR_MASK
     let target ← structMember "facetOf" key "facet"
     require (target != zeroAddress) "TinyDiamond: selector not found"
