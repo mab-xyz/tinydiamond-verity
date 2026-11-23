@@ -4,9 +4,9 @@ open Lake DSL
 package «tinydiamond-verity» where
   version := v!"0.1.0"
 
--- Verity: upstream main (lfglabs-dev/verity, 45578f33a). TinyDiamond needs none of the fork features.
+-- Verity: upstream main (lfglabs-dev/verity, bc161da0b). TinyDiamond needs none of the fork features.
 require verity from git
-  "https://github.com/lfglabs-dev/verity.git"@"45578f33a29bf27d391a0b53719cc980cc69ee5c"
+  "https://github.com/lfglabs-dev/verity.git"@"bc161da0bafab296e54d9918b56a3d9018de5916"
 
 @[default_target]
 lean_lib «TinyDiamond» where
