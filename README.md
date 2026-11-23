@@ -193,7 +193,7 @@ validates scalar arguments since lfglabs-dev/verity#2798; before, it masked them
 
 ## Verity gaps worked around
 
-These workarounds are kept outside Verity so that this repository builds against the pinned fork:
+These workarounds are kept outside Verity so that this repository builds against upstream Verity:
 
 - `fallback` cannot be declared `payable` and cannot carry a reentrancy disposition.
   `TinyDiamondCompile.lean` patches the compiled spec: `isPayable`, `reentrancyTrusted`.
@@ -226,7 +226,7 @@ scripts/build-evm.sh && forge test
 scripts/mutants.sh
 ```
 
-Verity is pinned at `mab-xyz/verity@96f7c02f1` (upstream main plus the fork features, branch `int/upstream-2026-11-19`). Building it from scratch takes a long time; a
+Verity is pinned at upstream `lfglabs-dev/verity@45578f33a` (main); no fork feature is needed. Building it from scratch takes a long time; a
 `.lake` with the Verity packages already built can be reused.
 
 ## License

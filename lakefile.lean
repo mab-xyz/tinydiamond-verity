@@ -4,9 +4,9 @@ open Lake DSL
 package «tinydiamond-verity» where
   version := v!"0.1.0"
 
--- Verity: upstream main 76d25f370 plus the mab-xyz fork features (branch int/upstream-2026-11-19).
+-- Verity: upstream main (lfglabs-dev/verity, 45578f33a). TinyDiamond needs none of the fork features.
 require verity from git
-  "https://github.com/mab-xyz/verity.git"@"96f7c02f1d63c4e999052fcbc31be6208a5baf2d"
+  "https://github.com/lfglabs-dev/verity.git"@"45578f33a29bf27d391a0b53719cc980cc69ee5c"
 
 @[default_target]
 lean_lib «TinyDiamond» where
