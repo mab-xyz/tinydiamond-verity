@@ -70,19 +70,9 @@ theorem addSelector_same (k : Uint256) : Preserves Same (TinyDiamond.addSelector
   exact Preserves.bind same_preorder (setSelectorAt_same _ _)
     (fun _ => Preserves.pure same_preorder _)
 
-theorem mstore_same (o v : Uint256) : Preserves Same (Contracts.mstore o v) := by
-  intro s x s' h; cases h; rfl
-
-theorem rawLog_same (t : List Uint256) (o n : Uint256) : Preserves Same (Contracts.rawLog t o n) := by
-  intro s x s' h
-  unfold Contracts.rawLog at h
-  split at h <;> cases h; rfl
-
+/-- An `emit` only appends to the log. -/
 theorem emitCut_same (f a k : Uint256) : Preserves Same (TinyDiamond.emitCut f a k) := by
-  unfold TinyDiamond.emitCut
-  repeat (first
-    | exact rawLog_same _ _ _
-    | refine Preserves.bind same_preorder (mstore_same _ _) fun _ => ?_)
+  intro s x s' h; cases h; rfl
 
 /-- Facets, restrictions and the admin are unchanged. -/
 def Q (s s' : ContractState) : Prop :=

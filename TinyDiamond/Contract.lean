@@ -46,9 +46,16 @@ verity_contract TinyDiamond where
     restriction : Bytes32 → Uint256 := slot 0x0abc81caac83e1656ee495fd84f3fd0c2020c41999d182a4a81694a75a694702
     adminSlot : Address := slot 0xb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103
 
+  -- EIP-2535's `FacetCut`; `action` is 0 (Add), 1 (Replace) or 2 (Remove)
+  struct FacetCut where
+    facetAddress : Address,
+    action : Uint8,
+    functionSelectors : Array Bytes4
+
+  event_defs
+    event DiamondCut(diamondCut : Array FacetCut, init : Address, calldata : Bytes)
+
   constants
-    -- keccak256("DiamondCut((address,uint8,bytes4[])[],address,bytes)")
-    DIAMOND_CUT_TOPIC : Uint256 := 0x8faa70878671ccd212d20771b795c50af8fd3ff6cf27f4bde57e5d4de0aeb673
     -- built-in (immutable) selectors, left-aligned
     SEL_SHARP_CUT : Uint256 := 0xaa15ede900000000000000000000000000000000000000000000000000000000
     SEL_RESTRICT : Uint256 := 0x89bf5c0200000000000000000000000000000000000000000000000000000000
@@ -57,9 +64,9 @@ verity_contract TinyDiamond where
     SEL_SELECTOR_TO_FACET : Uint256 := 0xae7473ac00000000000000000000000000000000000000000000000000000000
     SEL_SELECTOR_RESTRICTION : Uint256 := 0xff8afdb900000000000000000000000000000000000000000000000000000000
     NO_POSITION : Uint256 := 0
+    -- `DiamondCut`'s `_init`: no initializer is called
+    NO_INIT : Uint256 := 0
     SELECTOR_MASK : Uint256 := 0xffffffff00000000000000000000000000000000000000000000000000000000
-    -- event payload buffer (above Solidity's scratch space and free-memory pointer)
-    BUF : Uint256 := 0x200
     -- gas forwarded to the facet: all of it (EIP-150 keeps 1/64)
     ALL_GAS : Uint256 := 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 
@@ -67,24 +74,8 @@ verity_contract TinyDiamond where
     let deployer ← msgSender
     setStorageAddr adminSlot deployer
     let me ← contractAddress
-    unsafe "ABI-encode the built-in selectors' DiamondCut (Add, facet = this) in memory" do
-      mstore BUF 0x60
-      mstore (add BUF 0x20) 0
-      mstore (add BUF 0x40) 0x1e0
-      mstore (add BUF 0x60) 1
-      mstore (add BUF 0x80) 0x20
-      mstore (add BUF 0xa0) (addressToWord me)
-      mstore (add BUF 0xc0) 0
-      mstore (add BUF 0xe0) 0x60
-      mstore (add BUF 0x100) 6
-      mstore (add BUF 0x120) SEL_SHARP_CUT
-      mstore (add BUF 0x140) SEL_RESTRICT
-      mstore (add BUF 0x160) SEL_ADMIN
-      mstore (add BUF 0x180) SEL_GET_TARGET
-      mstore (add BUF 0x1a0) SEL_SELECTOR_TO_FACET
-      mstore (add BUF 0x1c0) SEL_SELECTOR_RESTRICTION
-      mstore (add BUF 0x1e0) 0
-    rawLog [DIAMOND_CUT_TOPIC] BUF 0x200
+    emit "DiamondCut" [[⟨me, 0, [SEL_SHARP_CUT, SEL_RESTRICT, SEL_ADMIN, SEL_GET_TARGET,
+      SEL_SELECTOR_TO_FACET, SEL_SELECTOR_RESTRICTION]⟩], NO_INIT, emptyBytes]
 
   receive := do
     pure ()
@@ -111,19 +102,7 @@ verity_contract TinyDiamond where
 
   -- EIP-2535 `DiamondCut` with one FacetCut of one selector, `_init = 0`, `_calldata = ""`.
   function internal emitCut (facetWord : Uint256, action : Uint256, key : Uint256) : Unit := do
-    unsafe "ABI-encode DiamondCut((address,uint8,bytes4[])[],address,bytes) in memory" do
-      mstore BUF 0x60
-      mstore (add BUF 0x20) 0
-      mstore (add BUF 0x40) 0x140
-      mstore (add BUF 0x60) 1
-      mstore (add BUF 0x80) 0x20
-      mstore (add BUF 0xa0) facetWord
-      mstore (add BUF 0xc0) action
-      mstore (add BUF 0xe0) 0x60
-      mstore (add BUF 0x100) 1
-      mstore (add BUF 0x120) key
-      mstore (add BUF 0x140) 0
-    rawLog [DIAMOND_CUT_TOPIC] BUF 0x160
+    emit "DiamondCut" [[⟨facetWord, action, [key]⟩], NO_INIT, emptyBytes]
 
   function internal isBuiltin (key : Uint256) : Bool := do
     return (key == SEL_SHARP_CUT || key == SEL_RESTRICT || key == SEL_ADMIN ||

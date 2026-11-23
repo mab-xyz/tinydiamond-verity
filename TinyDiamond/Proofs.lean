@@ -309,8 +309,6 @@ theorem constructor_sets_admin (s s' : ContractState)
     simp [adminOf, TinyDiamond.adminSlot, ContractState.writeAddrSlot, ContractState.storageAddr]
   refine Establishes.bind_left hK hset (fun _ => ?_) s () s' hs
   refine Preserves.bind same_preorder contractAddress_same fun _ => ?_
-  repeat (first
-    | exact rawLog_same _ _ _
-    | refine Preserves.bind same_preorder (mstore_same _ _) fun _ => ?_)
+  intro st x st' h; cases h; rfl
 
 end Diamond.Proofs

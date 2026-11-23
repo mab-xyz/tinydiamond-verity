@@ -147,9 +147,9 @@ The list lemmas use exact `Uint256` expressions of the contract's packing code:
 
   `test/Dispatch.t.sol` and the differential tests check forwarding on the bytecode, including
   payloads whose length is not a multiple of 32.
-- **The `DiamondCut` event payload.** The contract builds it with `mstore` and emits it with
-  `rawLog`, and Verity's model records the log's offset and size but not its bytes. The
-  differential tests compare the payloads byte for byte, constructor log included.
+- **The `DiamondCut` event payload.** The contract emits it with `emit`, and Verity's model
+  records its ABI-encoded words, but no theorem here states them. The differential tests compare
+  the payloads byte for byte, constructor log included.
 - **Selector counts near `2^95`.** The list theorems assume fewer than `2^95` selectors, far
   below the `2^32` distinct selectors that can exist.
 - **Gas.**
@@ -199,8 +199,6 @@ These workarounds are kept outside Verity so that this repository builds against
   `SolidityReturnMemory` (`return(0, returndatasize())`).
 - No packed `bytes4[]` and no `bytes4` mapping key. The contract declares a `uint256[]` with
   hand-packed words, and adds a `StorageKey (BytesN 4)` instance (the left-aligned word).
-- `emit` cannot encode `FacetCut[]`. The contract builds the ABI encoding with `mstore` and
-  emits it with `rawLog`.
 - Special entrypoints come before functions, so the fallback is written inline rather than
   calling helpers.
 
@@ -211,8 +209,7 @@ These workarounds are kept outside Verity so that this repository builds against
   differential and upstream tests cover this gap on the bytecode.
 - `solc --strict-assembly` (Yul → EVM), version 0.8.33.
 - The `local_obligations`/`unsafe` blocks in `Contract.lean`, which the Verity trust report flags:
-  - raw calldata and returndata handling in the fallback;
-  - event encoding in memory.
+  - raw calldata and returndata handling in the fallback.
 
 ## Reproduce
 
@@ -224,7 +221,7 @@ scripts/build-evm.sh && forge test
 scripts/mutants.sh
 ```
 
-Verity is pinned at upstream `lfglabs-dev/verity@45578f33a` (main); no fork feature is needed. Building it from scratch takes a long time; a
+Verity is pinned at upstream `lfglabs-dev/verity@bc161da0b` (main); no fork feature is needed. Building it from scratch takes a long time; a
 `.lake` with the Verity packages already built can be reused.
 
 ## License

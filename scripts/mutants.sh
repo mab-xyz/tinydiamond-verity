@@ -42,7 +42,7 @@ mutant restrict-not-stored     's/sstore(mappingSlot(485619152336692952386314462
 mutant calldata-truncated      's/calldatacopy(0, 0, calldatasize())/calldatacopy(0, 0, sub(calldatasize(), 1))/'
 mutant call-not-delegatecall   's/let ok := delegatecall(\([0-9]*\), target,/let ok := call(\1, target, 0,/'
 mutant constructor-no-admin    's/and(deployer, 0xffffffffffffffffffffffffffffffffffffffff)/0/'
-mutant constructor-no-event    's/log1(512, 512, /pop(/'
+mutant constructor-no-event    '/^            log1(__evt_ptr/s/log1(__evt_ptr, __evt_data_tail, __evt_topic0)/pop(__evt_topic0)/'
 cp out/TinyDiamond.yul.orig out/TinyDiamond.yul
 cp out/TinyDiamond.bin.orig out/TinyDiamond.bin
 rm -f out/TinyDiamond.yul.orig out/TinyDiamond.bin.orig
