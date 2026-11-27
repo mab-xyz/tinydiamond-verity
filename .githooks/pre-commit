@@ -1,0 +1,4 @@
+#!/bin/sh
+# Refuse a commit whose dependency pins disagree (scripts/check-pins.py).
+# Enable once per clone: git config core.hooksPath .githooks
+exec python3 scripts/check-pins.py --staged

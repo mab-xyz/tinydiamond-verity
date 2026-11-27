@@ -221,6 +221,7 @@ These workarounds are kept outside Verity so that this repository builds against
 ## Reproduce
 
 ```bash
+git config core.hooksPath .githooks   # once per clone: scripts/check-pins.py before every commit
 git submodule update --init
 lake build                               # contract + proofs (Verity pinned in lakefile.lean)
 lake env lean scripts/PrintAxioms.lean
@@ -230,6 +231,10 @@ scripts/mutants.sh
 
 Verity is pinned at upstream `lfglabs-dev/verity@bc161da0b` (main); no fork feature is needed. Building it from scratch takes a long time; a
 `.lake` with the Verity packages already built can be reused.
+
+The pre-commit hook (`.githooks/pre-commit`) runs `scripts/check-pins.py` on the staged state: it refuses a commit
+whose `lakefile.lean` and `lake-manifest.json`, `foundry.lock` and a submodule gitlink, or a gitlink and its
+checkout disagree. `python3 scripts/check-pins.py` runs the same check on the working tree.
 
 ## License
 
