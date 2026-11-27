@@ -2,7 +2,7 @@
 
 [TinyDiamond](https://github.com/mab-xyz/tiny-diamond) (the core: `TinyDiamond.sol` +
 `LibTinyDiamond.sol`, not the optional loupe and diamondCut facets) written in
-[Verity](https://github.com/mab-xyz/verity), a Lean 4 language for smart contracts, and compiled by
+[Verity](https://github.com/lfglabs-dev/verity), a Lean 4 language for smart contracts, and compiled by
 Verity to EVM bytecode.
 
 - Lean proves the routing table correct: access control, immutable built-ins, the exact storage
